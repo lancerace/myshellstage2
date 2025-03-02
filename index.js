@@ -1,5 +1,5 @@
 import express from 'express';
-import { analyzeDocument } from './controllers/index.js';
+import { randomFormattingTask } from './controllers/index.js';
 
 const app = express();
 
@@ -7,8 +7,7 @@ const app = express();
 const v1Router = express.Router();
 app.use('/v1', v1Router);
 
-// Document analysis route
-v1Router.get('/analyze-document', analyzeDocument);
+v1Router.get('/random-formatting-task', randomFormattingTask);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

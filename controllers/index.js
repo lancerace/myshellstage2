@@ -1,13 +1,12 @@
-import fs from 'fs';
-import mammoth from 'mammoth';
-import path from 'path';
-import { JSDOM } from 'jsdom';
-import { fileURLToPath } from 'url';
-
+import fs from "fs";
+import mammoth from "mammoth";
+import path from "path";
+import { fileURLToPath } from "url";
+import { TextRun, Paragraph, Document, Packer } from "docx";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const fileName = 'bold_underline.docx';
+export const fileName = "docA.docx";
 
 // Function to analyze document
 async function analyzeDocumentFile() {
@@ -17,130 +16,116 @@ async function analyzeDocumentFile() {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Document ${fileName} not found in docs directory`);
     }
-
-    let trackThirdWord = 0;
-    let fontSize = 0;
-    const htmlResult = await mammoth.convertToHtml(
-      { path: filePath },
-      {
-        styleMap: ["u => u", "b => strong"],
-        transformDocument: (element) => {
-          let words = [];
-          // Get all words from the paragraph
-          console.log("element:", element);
-          element.children.forEach((run) => {
-            run.children.forEach((runChild) => {
-              if (
-                runChild.children &&
-                runChild.children[0]?.type &&
-                runChild.children[0].type === "text"
-              ) {
-                const text = runChild.children[0].value.trim(); //do a basic trim on whitespaces
-                const isSingleWord = text.split(" ").length === 1;
-                const isValidWord = text.length >= 1;
-
-                if (isValidWord && trackThirdWord < 3) {
-                  //console.log('check isValidword:',text,isValidWord);
-                  //console.log(isSingleWord);
-                  if (!isSingleWord) {
-                    const words = text.split(" ");
-                    //console.log("words:", words);
-                    words.forEach((word) => {
-                      const isValidWord = word.length >= 1;
-                      if(trackThirdWord ===3){
-                        fontSize = runChild.fontSize;
-                      }
-                      if (isValidWord)
-                        trackThirdWord += 1;
-                    });
-                  }//end if(!isSingleWord)
-                }//end if(isValidWord && trackThirdWord < 3)
-                if (trackThirdWord === 3) {
-                  fontSize = runChild.fontSize;
-                }
-
-                if (text) {
-                  words = words.concat(text.split(/\s+/));
-                }
-              }
-            });
-          });
-
-          return element;
-        },
-      }
-    );
-
-    const html = htmlResult.value; // The HTML with formatting
-    console.log("html:", html);
-
-    // Create a DOM parser to get text content
-    const dom = new JSDOM(`<!DOCTYPE html><div id="content">${html}</div>`);
-    const document = dom.window.document;
-
-    // Get text content and split into words
-    const text = document.getElementById("content").textContent;
-    const words = text.split(/\s+/).filter((word) => word.length > 0);
-    const firstThreeWords = words.slice(0, 3);
-    console.log("firstThreeWords:", firstThreeWords);
-
-    // Initialize analysis results
-    const analysis = {
-      firstWordsBold: false,
-      secondWordUnderlined: false,
-      thirdWordFontSize: fontSize,
-      words: {
-        first: words[0] || "",
-        second: words[1] || "",
-        third: words[2] || "",
-      },
-    };
-
-    // Check if first word is bold
-    const strongElements = document.querySelectorAll("strong");
-    console.log("strongElements:", strongElements);
-    for (const element of strongElements) {
-      //console.log("Bold element content:", element.textContent.trim());
-      if (element.textContent.trim() === words[0]) {
-        analysis.firstWordsBold = true;
-        break;
-      }
-    }
-
-    // Check if second word is underlined
-    const underlineElements = document.querySelectorAll("u");
-    //console.log("underlineElements:", underlineElements);
-    for (const element of underlineElements) {
-     // console.log("Underline element content:", element.textContent.trim());
-      if (element.textContent.trim() === words[1]) {
-        analysis.secondWordUnderlined = true;
-        break;
-      }
-    }
-
-
-    console.log("Analysis results:", analysis);
-    return analysis;
   } catch (error) {
     console.error("Error analyzing document:", error);
     throw error;
   }
 }
 
-// Controller methods
-export const analyzeDocument = async (req, res) => {
+async function generateRandomFormattingTask(text) {
+  const words = text.split(" ");
+  const numberOfWords = words.length;
+  const randomOperations = ["bold", "underline", "italic"];
+  const tasks = [];
+
+  //generate 5 random formatting operations
+
+  const max = randomOperations.length;
+  for (let i = 0; i < 5; i++) {
+    const randomOperation = randomOperations[Math.floor(Math.random() * max)];
+    const randomWordIndex = Math.floor(Math.random() * numberOfWords);
+
+    /* Have the output be taskA = [("bold", 9), ("underline", 5), ("bold", 6), ("italic", 9), ("italic", 5)]
+    since tuple is not supported in javascript, we can use array of arrays.
+    output would be, for example [["bold", 9], ["underline", 5], ["bold", 6], ["italic", 9], ["italic", 5]] */
+    tasks.push([randomOperation, randomWordIndex]);
+  }
+  return tasks;
+}
+
+async function applyFormatting(textContent, tasks) {
+  const words = textContent.split(" ");
+
+  const formattedRuns = words.map((word, index) => {
+    let textRun = new TextRun({ text: word + ' ' });
+
+    //for each task, if the word index matches, apply the formatting
+    for (let i = 0; i < tasks.length; i++) {
+      const [operation, wordIndex] = tasks[i];
+      if (index === wordIndex) {
+        if (operation === "bold") {
+          textRun = new TextRun({ text: word + " ", bold: true });
+        }
+        if (operation === "underline") {
+          textRun = new TextRun({ text: word + " ", underline: { type: "single" } });
+        }
+        if (operation === "italic") {
+          textRun = new TextRun({ text: word + " ", italics: true });
+        }
+      }
+    }
+    return textRun;
+  });
+
+  return new Paragraph({
+    children: formattedRuns,
+  });
+}
+
+async function getDocumentContent() {
+  fs.readFile(path.join(__dirname, "..", "docs", fileName), (err, data) => {
+    if (err) {
+      console.error("Error reading document:", err);
+      return;
+    }
+
+    mammoth.extractRawText({ buffer: data }).then(async (result) => {
+      const textContent = result.value.trim();
+      console.log("text:", textContent);
+      const tasks = await generateRandomFormattingTask(textContent);
+      console.log("tasks:", tasks);
+
+      const formattedText = await applyFormatting(textContent, tasks);
+
+      //prepare the document and write to file
+      const doc = new Document({
+        sections: [
+          {
+            children: [formattedText],
+          },
+        ],
+      });
+
+      const docxBuffer = await Packer.toBuffer(doc);
+      const newFilePath = path.join(
+        __dirname,
+        "..",
+        "docs",
+        "formattedDocA.docx"
+      );
+      fs.writeFile(newFilePath, docxBuffer, (err) => {
+        if (err) {
+          console.error("Error writing formatted document:", err);
+        }
+      });
+    });
+  });
+}
+
+export async function randomFormattingTask(req, res) {
   try {
-    const analysis = await analyzeDocumentFile();
+    const content = await getDocumentContent();
+
     res.json({
       success: true,
-      message: "Document analyzed successfully",
-      data: analysis,
+      message: "Random formatting task generated successfully",
+      data: content,
     });
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({
       success: false,
-      error: error.message || "Error analyzing document",
+      error: error.message || "Error generating random formatting task",
     });
   }
-};
+}
