@@ -1,3 +1,5 @@
+verification function + word operation function for ppt file
+
 ``npm run dev`` to run the backend
 
 
